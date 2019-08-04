@@ -1,0 +1,89 @@
+#/* $begin ncopy-ys */
+##################################################################
+# ncopy.ys - Copy a src block of len words to dst.
+# Return the number of positive words (>0) contained in src.
+#
+# Include your name and ID here.
+# cpe - 8.86
+# Describe how and why you modified the baseline code.
+#
+##################################################################
+# Do not modify this portion
+# Function prologue.
+# %rdi = src, %rsi = dst, %rdx = len
+ncopy:
+
+##################################################################
+# You can modify this portion
+	# Loop header
+	xorq %rax,%rax		# count = 0;
+	andq %rdx,%rdx		# len <= 0?
+	jg pbdone		# if so, goto Done:
+    jmp Done
+pbdone:
+    rrmovq %rdx,%r11
+    iaddq $-4,%r11
+    jge MoreThanEight
+    jmp LessThanEight
+# loop unrolling * 8
+MoreThanEight:
+    mrmovq (%rdi), %r8	# read val from src...
+    mrmovq 8(%rdi), %r9
+    mrmovq 16(%rdi), %r10
+    mrmovq 24(%rdi), %r11
+    rrmovq %rax,%rcx
+    iaddq $1,%rcx
+    andq %r8,%r8
+    cmovg %rcx,%rax
+#     andq %r8,%r8
+# 	jle pos0		# if so, goto Npos:
+# 	iaddq $1, %rax		# count++
+# pos0:
+    rmmovq %r8, (%rsi)	# ...and store it to dst
+    #--------------------------------------------
+    andq %r9,%r9
+	jle pos1		# if so, goto Npos:
+	iaddq $1, %rax		# count++
+pos1:
+    rmmovq %r9, 8(%rsi)	# ...and store it to dst
+    #--------------------------------------------
+	andq %r10, %r10		# val <= 0?
+	jle pos2		# if so, goto Npos:
+	iaddq $1, %rax		# count++
+pos2:
+    rmmovq %r10, 16(%rsi)	# ...and store it to dst
+    #--------------------------------------------
+    andq %r11, %r11		# val <= 0?
+	jle pos3		# if so, goto Npos:
+	iaddq $1, %rax		# count++
+pos3:
+    rmmovq %r11, 24(%rsi)	# ...and store it to dst
+    #--------------------------------------------
+    iaddq $32, %rsi		# dst++
+    iaddq $32, %rdi		# src++
+    iaddq $-4, %rdx		# len -= 8
+	rrmovq %rdx,%r11
+    iaddq $-4,%r11
+    jg MoreThanEight	# 8 finished, go back:
+    andq %rdx,%rdx
+    jle Done
+LessThanEight:
+    mrmovq (%rdi), %r10	# read val from src...
+    iaddq $8, %rdi		# src++
+	andq %r10, %r10		# val <= 0?
+	jle Npos		# if so, goto Npos:
+	iaddq $1, %rax		# count++
+Npos:
+    rmmovq %r10, (%rsi)	# ...and store it to dst
+	iaddq $8, %rsi		# dst++
+    iaddq $-1, %rdx		# len--
+	jg LessThanEight	# if so, goto Loop:    
+##################################################################
+# Do not modify the following section of code
+# Function epilogue.
+Done:
+	ret
+##################################################################
+# Keep the following label at the end of your function
+End:
+#/* $end ncopy-ys */
