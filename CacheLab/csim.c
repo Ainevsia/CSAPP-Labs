@@ -7,7 +7,7 @@
 #define TRUE 1
 #define FALSE 0
 
-int miss, eviction, hit;
+int MISS, EVICTION, HIT;
 char * filepath;
 
 struct Line {
@@ -54,6 +54,17 @@ void pharse(int argc, char *argv[]) {
     }
 }
 
+void debug() {
+    for (int i = 0; i < cache.setnumber; i++)
+    {
+        printf("==set %d==\n", i);
+        for (int j = 0; j < cache.linenumber; j++)
+        {
+            printf("%d %d %lx\n", cache.set[i].line[j].aval, cache.set[i].line[j].lastused, cache.set[i].line[j].tag);
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
     pharse(argc, argv);
@@ -70,7 +81,7 @@ int main(int argc, char *argv[])
     char head, c;
     unsigned long addr;
     int size;
-    printf("s: %d\tline: %d\tblock: %d\n",cache.setnumber,cache.linenumber,cache.blocksize);
+    // printf("s: %d\tline: %d\tblock: %d\n",cache.setnumber,cache.linenumber,cache.blocksize);
     while (scanf("%c", &head) != -1) {
         if (head == ' ')
             scanf("%c %lx,%d\n", &c, &addr, &size);
@@ -78,30 +89,91 @@ int main(int argc, char *argv[])
             c = head;
             scanf("%lx,%d\n", &addr, &size);
         }
-        printf("%c %lx,%d\t", c, addr, size);
+        if (c != 'I')
+            printf("%c %lx,%d", c, addr, size);
 
         /* operation start */
-        // addr >>= cache.blockbit;
         unsigned long setidx = (addr << cache.tagbit) >> (cache.tagbit + cache.blockbit);
         unsigned long tag = addr >> (cache.blockbit + cache.setbit);
-        printf("%lx\t%lx\n", setidx, tag);
+        // printf("setid: %lx\ttag: %lx\n", setidx, tag);
         
         switch (c) {
             case 'S':
-                break;
-            case 'L':
-                for (int i=0; i<=cache.linenumber; i++) {
-                    struct Line curline = cache.set[setidx].line[i];
-                    if (curline.tag == tag && curline.aval == TRUE) hit++;
-                }
-                break;
             case 'M':
+            case 'L':
+                printf(" ");
+                int hit = FALSE;
+                for (int i=0; i<=cache.linenumber; i++) { /* search for hit */
+                    struct Line *curline = &cache.set[setidx].line[i];
+                    if (curline->tag == tag && curline->aval == TRUE) { /* hit case */
+                        printf("hit ");
+                        /* update other lines' lastuse in the same set */
+                        for (int i = 0; i < cache.linenumber; i++) {
+                            if (cache.set[setidx].line[i].aval == TRUE) {
+                                cache.set[setidx].line[i].lastused++;
+                            }
+                        }
+                        curline->lastused = 1;
+                        hit = TRUE;
+                        HIT++;
+                        break;
+                    }
+                }
+                if (!hit) {
+                    MISS++;
+                    printf("miss ");
+                    /* LRU (least-recently used) replacement policy  */
+                    int evict = TRUE;
+                    for (int i = 0; i < cache.linenumber; i++) /* search for none used */ {
+                        if (cache.set[setidx].line[i].aval == 0) /* found not used */ {
+                            evict = FALSE;
+                            cache.set[setidx].line[i].tag = tag;
+                            cache.set[setidx].line[i].aval = TRUE;
+                            /* update other lines' lastuse in the same set */
+                            for (int i = 0; i < cache.linenumber; i++) {
+                                if (cache.set[setidx].line[i].aval != FALSE) {
+                                    cache.set[setidx].line[i].lastused++;
+                                }
+                            }
+                            cache.set[setidx].line[i].lastused = 1;
+                            break;
+                        }
+                    }
+                    if (evict) {
+                        struct Line* lptr = &cache.set[setidx].line[0];
+                        int lru = lptr->lastused;
+                        for (int i = 0; i < cache.linenumber; i++)
+                        {
+                            if (cache.set[setidx].line[i].lastused > lru)
+                            {
+                                lru = cache.set[setidx].line[i].lastused;
+                                lptr = &cache.set[setidx].line[i];
+                            }
+                        }
+                        lptr->tag = tag;
+                        lptr->lastused = 1;
+                        printf("eviction ");
+
+                        EVICTION++;
+                        /* update other lines' lastuse in the same set */
+                        for (int i = 0; i < cache.linenumber; i++) {
+                            if (cache.set[setidx].line[i].tag != tag && cache.set[setidx].line[i].aval == TRUE) {
+                                cache.set[setidx].line[i].lastused++;
+                            }
+                        }
+                    }
+                }
+                if ((c == 'M')) {
+                    HIT++;
+                    printf("hit ");
+                }
                 break;
             default:
                 continue;
         }
+        printf("\n");
+        // debug();
     }
-   
-    printSummary(miss, eviction, hit);
+    printSummary(HIT, MISS, EVICTION);
     return 0;
 }
