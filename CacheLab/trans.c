@@ -102,16 +102,73 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
             }
         }
     }
+    int k, t1, t2, t3, t4, t5, t6, t7, t8;
     if (M == 64 && N == 64) {
-        for (ibase = 0; ibase < N - 4; ibase += 4) {
-            
+        for (ibase = 0; ibase < N; ibase += 8) {
+            jbase = ibase;
+            for (k = 0; k < 4; k++) {   /* reverse upper half */
+                t1 = A[ibase + k][jbase + 0];
+                t2 = A[ibase + k][jbase + 1];
+                t3 = A[ibase + k][jbase + 2];
+                t4 = A[ibase + k][jbase + 3];
+                t5 = A[ibase + k][jbase + 4];
+                t6 = A[ibase + k][jbase + 5];
+                t7 = A[ibase + k][jbase + 6];
+                t8 = A[ibase + k][jbase + 7];
+
+                B[jbase][ibase + k] = t1;
+                B[jbase + 1][ibase + k] = t2;
+                B[jbase + 2][ibase + k] = t3;
+                B[jbase + 3][ibase + k] = t4;
+                B[jbase][ibase + k + 4] = t5;
+                B[jbase + 1][ibase + k + 4] = t6;
+                B[jbase + 2][ibase + k + 4] = t7;
+                B[jbase + 3][ibase + k + 4] = t8;
+
+                t1 = A[ibase + k + 4][jbase + 0];
+                t2 = A[ibase + k + 4][jbase + 1];
+                t3 = A[ibase + k + 4][jbase + 2];
+                t4 = A[ibase + k + 4][jbase + 3];
+                t5 = A[ibase + k + 4][jbase + 4];
+                t6 = A[ibase + k + 4][jbase + 5];
+                t7 = A[ibase + k + 4][jbase + 6];
+                t8 = A[ibase + k + 4][jbase + 7];
+
+                B[jbase + 4][ibase + k] = t1;
+                B[jbase + 4 + 1][ibase + k] = t2;
+                B[jbase + 4 + 2][ibase + k] = t3;
+                B[jbase + 4 + 3][ibase + k] = t4;
+                B[jbase + 4][ibase + k + 4] = t5;
+                B[jbase + 4 + 1][ibase + k + 4] = t6;
+                B[jbase + 4 + 2][ibase + k + 4] = t7;
+                B[jbase + 4 + 3][ibase + k + 4] = t8;
+            }
+            for (k = 0; k < 4; k++) {
+                t1 = B[jbase + k][ibase + 4];
+                t2 = B[jbase + k][ibase + 5];
+                t3 = B[jbase + k][ibase + 6];
+                t4 = B[jbase + k][ibase + 7];
+
+                t5 = B[jbase + k + 4][ibase + 0];
+                t6 = B[jbase + k + 4][ibase + 1];
+                t7 = B[jbase + k + 4][ibase + 2];
+                t8 = B[jbase + k + 4][ibase + 3];
+
+                B[jbase + k + 4][ibase + 0] = t1;
+                B[jbase + k + 4][ibase + 1] = t2;
+                B[jbase + k + 4][ibase + 2] = t3;
+                B[jbase + k + 4][ibase + 3] = t4;
+
+                B[jbase + k][ibase + 4] = t5;
+                B[jbase + k][ibase + 5] = t6;
+                B[jbase + k][ibase + 6] = t7;
+                B[jbase + k][ibase + 7] = t8;
+            }
         }
         for (ibase = 0; ibase < N; ibase += 4) {
             for (jbase = 0; jbase < M; jbase += 4) {
-                if ((ibase != N - 4 && jbase != M - 4) && 
-                (ibase == jbase || ibase == 4 + jbase || ibase + 4 == jbase)) {
+                if (ibase == jbase || (ibase % 2 == 0 && jbase == ibase + 1) || (jbase % 2 == 1 && ibase == jbase + 1))
                     continue;
-                }
                 B[ibase + 0][jbase] = A[jbase][ibase + 0];
                 B[ibase + 0][jbase + 1] = A[jbase + 1][ibase + 0];
                 B[ibase + 0][jbase + 2] = A[jbase + 2][ibase + 0];
