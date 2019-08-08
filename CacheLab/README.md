@@ -1,6 +1,5 @@
 # Results
-
-## Part A: Testing cache simulator
+# Part A: Testing cache simulator
 Running ./test-csim
                         Your simulator     Reference simulator
 Points (s,E,b)    Hits  Misses  Evicts    Hits  Misses  Evicts
@@ -15,7 +14,7 @@ Points (s,E,b)    Hits  Misses  Evicts    Hits  Misses  Evicts
     27
 
 
-## Part B: Testing transpose function
+# Part B: Testing transpose function
 Running ./test-trans -M 32 -N 32
 Running ./test-trans -M 64 -N 64
 Running ./test-trans -M 61 -N 67
