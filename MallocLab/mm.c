@@ -2,6 +2,7 @@
  * mm.c - teach me how to debug
  *
  * how to deal with sigsegv - gdb
+ * explicit free list LIFO
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,10 +50,11 @@
 #define NEXT_FREE_NODE(bp) ((void *)(*(size_t *)(         bp         )))
 #define PREV_FREE_NODE(bp) ((void *)(*(size_t *)((char *)(bp) + WSIZE)))
 
+/* get the literal address by ptr bp */
+#define ADDRESS(bp) ((*(size_t *)(bp)))
+
 static char * heap_startp;   /* byte */
 static char * heap_endp;
-static size_t malloc_cnt = 0;
-#define ROUND 200
 
 /* function declaration */
 void pnode(void * bp);
@@ -68,69 +70,58 @@ static void * extend_heap(size_t words);
 static void * coalesce(void * bp);
 void mm_free(void * bp);
 
+static void * attach(void * bp) {
+    /* attach to the head of the free list : 3 steps */
+    SET_BP_SUCC(bp, ADDRESS(heap_startp));
+    SET_BP_PRED(bp, heap_startp);
+    RELATE_ME(bp);
+    return bp;
+}
+
+static void * detach(void * bp) {
+    /* bp will be an unreachable node */
+    SET_PREV_SUCC(bp, ADDRESS(bp));
+    SET_NEXT_PRED(bp, ADDRESS((void *)(bp) + WSIZE));
+    return bp;
+}
+
 static void * coalesce(void * bp)
-{
+{   /* bp is guaranteed to be a free node */
     /* only extend_heap & mmfree will call coalesce function */
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
     size_t size = GET_SIZE(HDRP(bp));
 
     if (prev_alloc && next_alloc) {
-        /* take the risk of being a lonely node*/
         // printf("[CALES] (case 1) starting, bp = %p\n", bp);
-        
-        void * next_bp = NEXT_BLKP(bp);
-        if (GET_SIZE(HDRP(next_bp)) == 0)
-            next_bp = NULL;
-        else {
-            /* find the next free node in the list, search by blkp */
-            for (next_bp = NEXT_BLKP(bp); GET_ALLOC(HDRP(next_bp)) == ALLOC; next_bp = NEXT_BLKP(next_bp))
-                if (GET_SIZE(HDRP(next_bp)) == 0) {
-                    next_bp = NULL;
-                    break;
-                }
-        }
-        if (next_bp == NULL) 
-            next_bp = heap_endp;
-        
-        void * prev_bp;
-        /* find the prev free node in the list */
-        for (prev_bp = PREV_BLKP(bp); GET_ALLOC(HDRP(prev_bp)) == ALLOC; prev_bp = PREV_BLKP(prev_bp)) {
-            if (prev_bp == heap_startp) {
-                prev_bp = NULL;
-                break;
-            }
-        }
-        if (prev_bp == NULL) 
-            prev_bp = heap_startp;
-        SET_BP_SUCC(bp, next_bp);
-        SET_BP_PRED(bp, prev_bp);
-        RELATE_ME(bp);
-        return bp;
+        return attach(bp);
     }
     else if (prev_alloc && !next_alloc) {   /* merge behind */
+        // printf("[CALES] (case 2) starting, bp = %p\n", bp);
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
-        memcpy(bp, NEXT_BLKP(bp), DSIZE);
-        RELATE_ME(bp);
+        detach(NEXT_BLKP(bp));
         PUT(HDRP(bp), PACK(size, FREE));
         PUT(FTRP(bp), PACK(size, FREE));
-        // printf("[CALES] (case 2) merging %p to %p (size %d)\n", HDRP(bp), FTRP(bp), GET_SIZE(HDRP(bp)));
+        attach(bp);
     }
     else if (!prev_alloc && next_alloc) { /* merge front */
-        // printf("[CALES] (case 3) merging bp = %p \n", (bp));
+        // printf("[CALES] (case 3) starting, bp = %p\n", bp);
         bp = PREV_BLKP(bp);
         size += GET_SIZE(HDRP(bp));
         PUT(HDRP(bp), PACK(size, FREE));
         PUT(FTRP(bp), PACK(size, FREE));
+        detach(bp);
+        attach(bp);
     }
     else {  /* merge two way */
+        // printf("[CALES] (case 4) starting, bp = %p\n", bp);
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(HDRP(NEXT_BLKP(bp)));
-        memcpy(PREV_BLKP(bp), NEXT_BLKP(bp), WSIZE);
+        detach(NEXT_BLKP(bp));
+        detach(PREV_BLKP(bp));
         bp = PREV_BLKP(bp);
-        RELATE_ME(bp);
         PUT(HDRP(bp), PACK(size, FREE));
         PUT(FTRP(bp), PACK(size, FREE));
-        // printf("[CALES] (case 4) merging %p to %p (size %d)\n", HDRP(bp), FTRP(bp), GET_SIZE(HDRP(bp)));
+        attach(bp);
     }
     return bp;
 }
@@ -141,20 +132,13 @@ static void * extend_heap(size_t words)
     char * bp;
     if ((long)(bp = mem_sbrk(size)) == -1)
         return NULL;
-    /* bp points to the epilogue head */
-    bp -= 2 * WSIZE;
+    /* bp is pointing to the body */
 
     /* then the new block is in free state */
     PUT(HDRP(bp), PACK(size, FREE));            /* free block header */
     PUT(FTRP(bp), PACK(size, FREE));            /* free block fotter */
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, ALLOC));   /* epilogue header */
     
-    /* you should not let the origin heapend points to the current end */
-    /* instead, let the pre next point to the current end*/
-    SET_PREV_SUCC(bp, NEXT_BLKP(bp));
-    SET_BP_SUCC(NEXT_BLKP(bp), NULL);
-    SET_BP_SUCC(bp, NEXT_BLKP(bp));
-    SET_NEXT_PRED(bp, PREV_FREE_NODE(bp));
     heap_endp = NEXT_BLKP(bp);
     return coalesce(bp);
 }
@@ -166,61 +150,50 @@ static void * find_fit(size_t asize)
     for (bp = NEXT_FREE_NODE(heap_startp); NEXT_FREE_NODE(bp); bp = NEXT_FREE_NODE(bp)) {
         if (GET_SIZE(HDRP(bp)) >= asize)
             return bp;
-        // if (NEXT_FREE_NODE(NEXT_FREE_NODE(bp)) == bp) {
-        //     printf("reversed link node !!!!! DUMP\n");
-        //     exit(0);
-        // }
     }
     return NULL;
 }
 
 static void place(void * bp, size_t asize)
 {
-    // if (bp == heap_startp) {
-    //     // list_blk();
-    //     printf("bp == heap !!!!\n");
-    //     list_free_node();
-    // }
     size_t block_size = GET_SIZE(HDRP(bp));
     if (block_size < asize + MINBLOCK) { /* dont need to split */
         PUT(HDRP(bp), PACK(block_size, ALLOC));
         PUT(FTRP(bp), PACK(block_size, ALLOC));
         /* remove the node, bp is already a free node */
-        SET_NEXT_PRED(bp, PREV_FREE_NODE(bp));
-        SET_PREV_SUCC(bp, NEXT_FREE_NODE(bp));
+        detach(bp);
     }
     else { /*split the space and update the free node list*/
         PUT(HDRP(bp), PACK(asize, ALLOC));
         PUT(FTRP(bp), PACK(asize, ALLOC));
-        memcpy(NEXT_BLKP(bp), bp, DSIZE);
-        
+        detach(bp);
         bp = NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(block_size - asize, FREE));
         PUT(FTRP(bp), PACK(block_size - asize, FREE));
-        RELATE_ME(bp);
+        attach(bp);
     }
 }
 
 
 int mm_init(void)
 {
-    if ((heap_startp = mem_sbrk(4 * DSIZE)) == (void *)-1)
+    if ((heap_startp = mem_sbrk(5 * DSIZE)) == (void *)-1)
         return -1;
     
     PUT(heap_startp, 0);                                     /* alignment padding*/
     PUT(heap_startp + (1*WSIZE), PACK(MINBLOCK, ALLOC));     /* prologue header*/
-    /* move heap_ptr to the bp place */
     heap_startp += DSIZE;
     
     SET_BP_SUCC(heap_startp, heap_startp + 4*WSIZE);
     SET_BP_PRED(heap_startp, NULL);
     PUT(heap_startp + (2 * WSIZE), PACK(MINBLOCK, ALLOC));     /* prologue fotter*/
     
-    PUT(heap_startp + (3 * WSIZE), PACK(0, ALLOC));            /* epilogue header*/
+    PUT(heap_startp + (3 * WSIZE), PACK(MINBLOCK, ALLOC));            /* epilogue header*/
     SET_BP_SUCC(heap_startp + 4*WSIZE, NULL);
     SET_BP_PRED(heap_startp + 4*WSIZE, heap_startp);
+    PUT(heap_startp + (6 * WSIZE), PACK(MINBLOCK, ALLOC));
     
-   /* extend the heap by chunksize */
+    /* extend the heap by chunksize */
     if (extend_heap(CHUNKSIZE/WSIZE) == NULL)
         return -1;
 
@@ -233,9 +206,6 @@ void *mm_malloc(size_t size)
     if (size == 0) 
         return NULL;
     // printf("[REQUEST] size %ld\n", size);
-    malloc_cnt += 1;
-    
-    // mm_check_free_node();
     size_t asize;   /* adjusted size for alignment */
     if (size < DSIZE) 
         asize = MINBLOCK; 
@@ -247,8 +217,6 @@ void *mm_malloc(size_t size)
     if (bp != NULL) {
         place(bp, asize);
         // printf("[PLACE] malloc %ld, given %p with size %ld\n", size, bp, asize);
-        // list_free_node();
-        // mm_check_free_node();
         return bp;
     }
 
@@ -260,19 +228,16 @@ void *mm_malloc(size_t size)
         return NULL;
     place(bp, asize);
     // printf("[PLACE] malloc %ld, given %p with size %ld\n", size, bp, asize);
-    // list_free_node();
-    // mm_check_free_node();
     return bp;
 }
 
-void mm_free(void * bp) 
+void mm_free(void * bp) /* LIFO */
 {
-    if (GET_ALLOC(HDRP(bp)) != ALLOC || GET_ALLOC(FTRP(bp)) != ALLOC)
-        return;
     size_t size = GET_SIZE(HDRP(bp));
-    // printf("[FREE ] %p\n with size %ld", bp, size);
+    // printf("[FREE ] %p with size %ld\n", bp, size);
     PUT(HDRP(bp), PACK(size, FREE));
     PUT(FTRP(bp), PACK(size, FREE));
+
     coalesce(bp);
 }
 
@@ -310,6 +275,10 @@ void list_free_node() {
     void * fptr = heap_startp;
     for (; fptr; fptr = NEXT_FREE_NODE(fptr)) {
         pnode(fptr);
+        if ((size_t)fptr == ADDRESS(fptr)) {
+            printf("error, (size_t)fptr == ADDRESS(fptr)\n");
+            exit(0);
+        }
     }
     printf("-------------list free node end  -------------\n");
 }
